@@ -184,20 +184,25 @@ export default function App() {
     []
   );
 
+  const isPollingRef = useRef(false);
+
   const refreshFromSheet = useCallback(async () => {
     const url = stateRef.current.event.appsScriptUrl.trim();
-    if (!url) {
-      setSheetStatus('local');
+    if (!url || isPollingRef.current) {
+      if (!url) setSheetStatus('local');
       return;
     }
+    isPollingRef.current = true;
     try {
-      const res = await callAppsScript(url, { type: 'get_state' }, 12000);
+      const res = await callAppsScript(url, { type: 'get_state' }, 25000);
       applyRemotePayload(res);
       setSheetStatus('connected');
       setSyncBannerError(null);
     } catch (err) {
       setSheetStatus('error');
       setSyncBannerError(err instanceof Error ? err.message : 'Unable to reach Google Sheet');
+    } finally {
+      isPollingRef.current = false;
     }
   }, [applyRemotePayload]);
 
@@ -213,7 +218,7 @@ export default function App() {
       if (document.visibilityState === 'visible') {
         void refreshFromSheet();
       }
-    }, 8000);
+    }, 12000);
 
     return () => clearInterval(timer);
   }, [event.appsScriptUrl, refreshFromSheet]);

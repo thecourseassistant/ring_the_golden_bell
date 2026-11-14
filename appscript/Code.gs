@@ -67,14 +67,19 @@ function getTargetSpreadsheet() {
 
 function doGet(e) {
   try {
-    var action = (e && e.parameter && e.parameter.type) ? String(e.parameter.type) : 'health';
-    if (action === 'get_state') {
-      var ss = getTargetSpreadsheet();
-      return jsonResponse(buildStatePayload(ss));
+    if (e && e.parameter && e.parameter.payload) {
+      var parsed = JSON.parse(String(e.parameter.payload));
+      return handleRequestPayload(parsed);
     }
+    var action = (e && e.parameter && e.parameter.type) ? String(e.parameter.type) : 'health';
+    if (action === 'get_state' || action === 'ping') {
+      return handleRequestPayload({ type: action });
+    }
+    var ss = getTargetSpreadsheet();
     return jsonResponse({
       ok: true,
       service: 'Golden Bell Judge Sheets Backend',
+      sheet: ss.getName(),
       timestamp: new Date().toISOString()
     });
   } catch (err) {
@@ -83,24 +88,35 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-
   try {
     var payload = JSON.parse(e.postData.contents || '{}');
+    return handleRequestPayload(payload);
+  } catch (err) {
+    return jsonResponse({ ok: false, error: String(err) });
+  }
+}
+
+function handleRequestPayload(payload) {
+  try {
     var ss = getTargetSpreadsheet();
 
     if (payload.type === 'ping') {
-      ensureConfig(ss);
-      getOrCreateSheet(ss, 'Scores', SCORES_HEADERS);
       return jsonResponse({ ok: true, message: 'Connected to Google Sheet: ' + ss.getName() });
     }
 
-    if (payload.type === 'get_state') {
+    if (payload.type === 'get_state' && ss.getSheetByName('Config') && ss.getSheetByName('Scores')) {
       return jsonResponse(buildStatePayload(ss));
     }
 
-    if (payload.type === 'save_config') {
+    var lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+
+    try {
+      if (payload.type === 'get_state') {
+        return jsonResponse(buildStatePayload(ss));
+      }
+
+      if (payload.type === 'save_config') {
       var updatedCfg = writeConfig(ss, payload.config || {});
       var stateAfterCfg = buildStatePayload(ss, updatedCfg);
       syncBothLeaderboards(ss, stateAfterCfg.participants);
@@ -276,15 +292,16 @@ function doPost(e) {
       scoresSheet.getRange(startRow, 1, rowsToAppend.length, SCORES_HEADERS.length).setValues(rowsToAppend);
     }
 
-    var finalState = buildStatePayload(ss, config);
-    syncBothLeaderboards(ss, finalState.participants);
-    finalState.appended = appended;
-    finalState.rejected = rejected;
-    return jsonResponse(finalState);
+      var finalState = buildStatePayload(ss, config);
+      syncBothLeaderboards(ss, finalState.participants);
+      finalState.appended = appended;
+      finalState.rejected = rejected;
+      return jsonResponse(finalState);
+    } finally {
+      lock.releaseLock();
+    }
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) });
-  } finally {
-    lock.releaseLock();
   }
 }
 
