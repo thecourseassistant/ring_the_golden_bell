@@ -1,0 +1,6 @@
+{
+  "name": "Golden Bell Judge",
+  "description": "Real-time Ring a Golden Bell competition scoring pad, tamper-proof backend booster triggers, Google Sheets Apps Script sync, and performance trends dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
