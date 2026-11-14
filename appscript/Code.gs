@@ -55,8 +55,13 @@ var LEADERBOARD_HEADERS = [
 ];
 
 function getTargetSpreadsheet() {
-  if (SPREADSHEET_URL && SPREADSHEET_URL !== 'PASTE_YOUR_GOOGLE_SPREADSHEET_LINK_HERE') {
-    return SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+  var rawUrl = (SPREADSHEET_URL || '').trim();
+  if (rawUrl && rawUrl !== 'PASTE_YOUR_GOOGLE_SPREADSHEET_LINK_HERE') {
+    var idMatch = rawUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (idMatch && idMatch[1]) {
+      return SpreadsheetApp.openById(idMatch[1]);
+    }
+    return SpreadsheetApp.openByUrl(rawUrl);
   }
   var active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) {

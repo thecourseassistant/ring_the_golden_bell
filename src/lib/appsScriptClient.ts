@@ -2,6 +2,7 @@ import type { CompetitionEvent, ScoreEvent } from '../types.ts';
 
 export interface AppsScriptStateResponse {
   ok: boolean;
+  service?: string;
   error?: string;
   message?: string;
   appended?: number;
@@ -59,6 +60,37 @@ export async function callAppsScript(
     throw new Error(validationError);
   }
 
+  const reqType = typeof payload.type === 'string' ? payload.type : '';
+  const sep = cleanUrl.includes('?') ? '&' : '?';
+
+  // Read-only actions (ping, get_state) go directly over GET for speed and zero lock contention
+  if (reqType === 'ping' || reqType === 'get_state') {
+    try {
+      const getUrl = `${cleanUrl}${sep}type=${encodeURIComponent(reqType)}&_t=${Date.now()}`;
+      const res = await fetch(getUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      return await parseAppsScriptResponse(res);
+    } catch (err) {
+      if (
+        (err instanceof DOMException && err.name === 'TimeoutError') ||
+        (err instanceof Error && /timed out|timeout/i.test(err.message))
+      ) {
+        throw new Error(
+          'Apps Script took too long (>30s) to respond. Click Test Sheet again and verify your /exec URL & SPREADSHEET_URL.'
+        );
+      }
+      if (err instanceof TypeError) {
+        throw new Error(
+          'Blocked by Google Apps Script CORS. Open your /exec URL in an Incognito/Private window: if Google asks you to sign in, change "Who has access" to "Anyone" and deploy a New version.'
+        );
+      }
+      throw err instanceof Error ? err : new Error('Failed to communicate with Google Apps Script');
+    }
+  }
+
   const encodedPayload = JSON.stringify(payload);
 
   try {
@@ -76,13 +108,12 @@ export async function callAppsScript(
       (err instanceof Error && /timed out|timeout/i.test(err.message))
     ) {
       throw new Error(
-        'Apps Script took too long (>30s) to respond. Click Test Sheet again and verify your /exec URL & SPREADSHEET_URL.'
+        'Apps Script took too long (>30s) to respond. Verify you deployed a New version of Code.gs and check your /exec URL.'
       );
     }
 
     // If POST hits a browser CORS/redirect restriction, retry via GET for eligible payloads
     if (err instanceof TypeError) {
-      const sep = cleanUrl.includes('?') ? '&' : '?';
       const getUrl = `${cleanUrl}${sep}payload=${encodeURIComponent(encodedPayload)}`;
       if (getUrl.length < 2000) {
         try {
@@ -113,6 +144,13 @@ export async function testAppsScriptDirect(url: string): Promise<{ ok: boolean; 
   }
   try {
     const res = await callAppsScript(url, { type: 'ping' }, 30000);
+    if (!res.message && res.service) {
+      return {
+        ok: false,
+        message:
+          'This /exec URL is still running an OLD Code.gs version. In Apps Script click Deploy -> Manage deployments -> Edit (pencil) -> Version: New version -> Deploy (or paste the new /exec URL here).',
+      };
+    }
     return { ok: true, message: res.message || 'Connected to Google Apps Script' };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : 'Connection failed' };
