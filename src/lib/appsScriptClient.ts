@@ -84,7 +84,7 @@ export async function callAppsScript(
     if (err instanceof TypeError) {
       const sep = cleanUrl.includes('?') ? '&' : '?';
       const getUrl = `${cleanUrl}${sep}payload=${encodeURIComponent(encodedPayload)}`;
-      if (getUrl.length < 6000) {
+      if (getUrl.length < 2000) {
         try {
           const getRes = await fetch(getUrl, {
             method: 'GET',

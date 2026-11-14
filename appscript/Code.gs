@@ -104,18 +104,14 @@ function handleRequestPayload(payload) {
       return jsonResponse({ ok: true, message: 'Connected to Google Sheet: ' + ss.getName() });
     }
 
-    if (payload.type === 'get_state' && ss.getSheetByName('Config') && ss.getSheetByName('Scores')) {
-      return jsonResponse(buildStatePayload(ss));
+    if (payload.type === 'get_state') {
+      return jsonResponse(buildStatePayload(ss, null, true));
     }
 
     var lock = LockService.getScriptLock();
-    lock.waitLock(15000);
+    lock.waitLock(20000);
 
     try {
-      if (payload.type === 'get_state') {
-        return jsonResponse(buildStatePayload(ss));
-      }
-
       if (payload.type === 'save_config') {
       var updatedCfg = writeConfig(ss, payload.config || {});
       var stateAfterCfg = buildStatePayload(ss, updatedCfg);
@@ -318,12 +314,11 @@ function getOrCreateSheet(ss, name, headers) {
   return sheet;
 }
 
-function ensureConfig(ss) {
-  var sheet = getOrCreateSheet(ss, 'Config', ['Key', 'Value']);
-  var lastRow = sheet.getLastRow();
+function readConfigOnly(ss) {
+  var sheet = ss.getSheetByName('Config');
   var map = {};
-  if (lastRow > 1) {
-    var rows = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  if (sheet && sheet.getLastRow() > 1) {
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
     for (var i = 0; i < rows.length; i++) {
       if (rows[i][0]) map[String(rows[i][0])] = rows[i][1];
     }
@@ -339,15 +334,21 @@ function ensureConfig(ss) {
     } catch (e) {}
   }
 
-  var cfg = {
+  return {
     name: map.name ? String(map.name) : 'Golden Bell Championship 2026',
     teamCount: Math.max(1, Math.min(500, Math.floor(Number(map.teamCount) || 15))),
     individualCount: Math.max(1, Math.min(500, Math.floor(Number(map.individualCount) || 30))),
     questionPoints: qPoints,
-    resetVersion: Math.floor(Number(map.resetVersion) || 0)
+    resetVersion: Math.floor(Number(map.resetVersion) || 0),
+    hasRows: Boolean(sheet && sheet.getLastRow() > 1)
   };
+}
 
-  if (lastRow <= 1) {
+function ensureConfig(ss) {
+  var cfg = readConfigOnly(ss);
+  var hasRows = cfg.hasRows;
+  delete cfg.hasRows;
+  if (!hasRows) {
     writeConfig(ss, cfg);
   }
   return cfg;
@@ -435,10 +436,10 @@ function deleteScoreRow(scoresSheet, clientTxId, sessionId, stage, roundNumber) 
   return null;
 }
 
-function buildStatePayload(ss, providedConfig) {
-  var cfg = providedConfig || ensureConfig(ss);
-  var scoresSheet = getOrCreateSheet(ss, 'Scores', SCORES_HEADERS);
-  var scores = readAllScores(scoresSheet);
+function buildStatePayload(ss, providedConfig, readOnly) {
+  var cfg = providedConfig || (readOnly ? readConfigOnly(ss) : ensureConfig(ss));
+  var scoresSheet = readOnly ? ss.getSheetByName('Scores') : getOrCreateSheet(ss, 'Scores', SCORES_HEADERS);
+  var scores = scoresSheet ? readAllScores(scoresSheet) : [];
 
   var participantsMap = {};
   var participants = [];
