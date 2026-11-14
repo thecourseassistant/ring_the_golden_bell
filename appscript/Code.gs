@@ -308,7 +308,7 @@ function getOrCreateSheet(ss, name, headers) {
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#0F172A').setFontColor('#FFFFFF');
     sheet.setFrozenRows(1);
-  } else if (sheet.getLastRow() >= 1 && sheet.getLastColumn() < headers.length) {
+  } else if (sheet.getLastRow() === 0 || sheet.getLastColumn() < headers.length) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
   return sheet;
@@ -349,13 +349,14 @@ function ensureConfig(ss) {
   var hasRows = cfg.hasRows;
   delete cfg.hasRows;
   if (!hasRows) {
-    writeConfig(ss, cfg);
+    return writeConfig(ss, cfg);
   }
   return cfg;
 }
 
 function writeConfig(ss, input) {
-  var current = ensureConfig(ss);
+  var current = readConfigOnly(ss);
+  delete current.hasRows;
   var qPoints = current.questionPoints;
   if (Array.isArray(input.questionPoints) && input.questionPoints.length === 20) {
     qPoints = input.questionPoints.map(function(n) { return Math.max(0, Math.min(100, Math.floor(Number(n) || 0))); });

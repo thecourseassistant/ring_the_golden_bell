@@ -256,7 +256,7 @@ export default function App() {
           sessionId: s.sessionId,
         }));
 
-        const res = await callAppsScript(url, { type: 'batch_sync', records }, 18000);
+        const res = await callAppsScript(url, { type: 'batch_sync', records }, 30000);
         applyRemotePayload(res);
 
         // Remove sent items from local queues (including any rejected duplicates already in Sheet)
